@@ -1,0 +1,1612 @@
+# This script is use for REACT evaluation on house 1 and house 2 data of REDD dataset
+
+# set working directory to data so it can be loaded
+setwd("../REDD/low_freq/house_2/")
+
+# load required libraries
+library("ggplot2")
+library("e1071")
+library("randomForest")
+library("HMM")
+library("zoo")
+library("fpc")
+library("cluster") 
+library("reshape")
+#install.packages("hexbin")
+library("cpm")
+
+library("hexbin")
+# install.packages(file.choose(), repos=NULL, type="source")
+
+# load data from .dat files
+main.1.data <- read.table("channel_1.dat", header=TRUE)
+main.2.data <- read.table("channel_2.dat", header=TRUE)
+head(main.2.data) # check top 6 data rows
+tail(main.1.data) # check top 6 data rows
+
+# puting power data into main.1.power and main.2.power
+main.1.power <- main.1.data[,2]
+main.2.power <- main.2.data[,2]
+summary(main.1.power)
+summary(main.2.power)
+
+# converting date time from epoch to numpy datetime 64 type
+main.date.time <- main.1.data[,1]
+main.date.time <- as.POSIXlt(main.date.time, origin ='1970-01-01', tz='America/Boston')
+head(main.date.time)
+
+# combining mains data frames.
+main.all.data <- data.frame(main_date_time=main.date.time, main_1_power= main.1.power, main_2_power= main.2.power)
+head(main.all.data)
+tail(main.all.data)
+
+# ploting the data into a graph
+plot(main.all.data$main_1_power ~ main.all.data$main_date_time, type="l", main="REDD: Main 1 Power", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(main.all.data$main_2_power ~ main.all.data$main_date_time, type="l", main="REDD: Main 2 Power", xlab="Date/Time",ylab="Real Power (Watts)") 
+
+
+####################### plotting for testing
+main_1 <- hexbin(main.all.data[1:2])
+
+plot(main.all.data$main_1_power ~ main.all.data$main_date_time, type="l", main="", xlab="Date/Time",ylab="Real Power (Watts)", xaxt="n") 
+axis(1, at=seq(from=main.all.data$main_date_time[1], by="day", length.out = length(main.all.data$main_1_power)), labels=strftime(seq(from=main.all.data$main_date_time[1], by="day", length.out = length(main.all.data$main_1_power)), format="%d/%m"))
+
+plot(main.all.data$main_2_power ~ main.all.data$main_date_time, type="l", main="", xlab="Date/Time",ylab="Real Power (Watts)", xaxt="n") 
+axis(1, at=seq(from=main.all.data$main_date_time[1], by="day", length.out = length(main.all.data$main_2_power)), labels=strftime(seq(from=main.all.data$main_date_time[1], by="day", length.out = length(main.all.data$main_2_power)), format="%d/%m"))
+#######################
+
+
+# checking labels dat file
+labels.data <- read.table("labels.dat", header=TRUE)
+labels.data
+
+####################### saving 
+write.table(labels.data, "labels.txt", sep="\t", col.names=FALSE, row.names = FALSE)
+####################### saving 
+
+# now loading all the data for each appliances in home 2
+kitchen.1.data <- read.table("channel_3.dat", header=TRUE)
+light.data <- read.table("channel_4.dat", header=TRUE)
+stove.data <- read.table("channel_5.dat", header=TRUE)
+microwave.data <- read.table("channel_6.dat", header=TRUE)
+washer.dryer.data <- read.table("channel_7.dat", header=TRUE)
+kitchen.2.data <- read.table("channel_8.dat", header=TRUE)
+refrigerator.data <- read.table("channel_9.dat", header=TRUE)
+dishwasher.data <- read.table("channel_10.dat", header=TRUE)
+disposal.data <- read.table("channel_11.dat", header=TRUE)
+head (washer.dryer.data)
+kitchen.1.power <- kitchen.1.data[,2]
+light.power <- light.data[,2]
+stove.power <- stove.data[,2]
+microwave.power <- microwave.data[,2]
+washer.dryer.power <- washer.dryer.data[,2]
+kitchen.2.power <- kitchen.2.data[,2]
+refrigerator.power <- refrigerator.data[,2]
+dishwasher.power <- dishwasher.data[,2]
+disposal.power <- disposal.data[,2]
+
+# converting date time for appliance data
+appliance.date.time <- as.POSIXlt(kitchen.1.data[,1], origin ='1970-01-01', tz='America/Boston')
+head(appliance.date.time)
+
+# creating data frame for all appliance data
+appliance.all.data <- data.frame(appliance_date_time=appliance.date.time, kitchen_1= kitchen.1.power, light= light.power, stove= stove.power, microwave=microwave.power, washer_dryer=washer.dryer.power, kitchen_2=kitchen.2.power, refrigerator=refrigerator.power, dishwasher=dishwasher.power, disposal=disposal.power  )
+head(appliance.all.data)
+summary(appliance.all.data)
+
+# now remove appliances' data frames; we don't need them any more
+rm(kitchen.1.data,kitchen.1.power,kitchen.2.data,kitchen.2.power,light.data,light.power,stove.data,stove.power,microwave.data,microwave.power,washer.dryer.data,washer.dryer.power,refrigerator.data,refrigerator.power,dishwasher.data,dishwasher.power,disposal.data,disposal.power)
+
+
+# mains starting/ending time and appliance starting and ending times
+main.date.time[1]
+main.date.time[length(main.date.time)]
+appliance.date.time[1]
+appliance.date.time[length(appliance.date.time)]
+
+# synchronizing times between mains and appliances and then subsetting datasets to match up things
+start.time <- '2011-04-18 07:00:00' # because when we convert it into string it is takes it one hour backward
+end.time <- '2011-05-02 00:59:59'
+
+mains.data <- subset(main.all.data, strftime(main.all.data$main_date_time) >= start.time & strftime(main.all.data$main_date_time) <= end.time)
+head(mains.data)
+tail(mains.data)
+
+# now remove main.all.data and other data frames; no more needed
+rm(main.1.data,main.1.power,main.2.data,main.2.power,main.date.time,main.all.data)
+
+plot(mains.data$main_1_power ~ mains.data$main_date_time, type="l", main="REDD: Main 1 Power", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(mains.data$main_2_power ~ mains.data$main_date_time, type="l", main="REDD: Main 2 Power", xlab="Date/Time",ylab="Real Power (Watts)") 
+
+appliances.data <- subset(appliance.all.data, strftime(appliance.all.data$appliance_date_time) >= start.time & strftime(appliance.all.data$appliance_date_time) <= end.time)
+head(appliances.data)
+tail(appliances.data)
+colSums(appliances.data[,-1])
+
+# now remove appliance.all.data and date.time data frames; no more needed
+rm(appliance.date.time,appliance.all.data,start.time,end.time)
+
+
+plot(appliances.data$refrigerator ~ appliances.data$appliance_date_time, type="l", main="REDD: Refrigerator", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(appliances.data$microwave ~ appliances.data$appliance_date_time, type="l", main="REDD: Microwave", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(appliances.data$light ~ appliances.data$appliance_date_time, type="l", main="REDD: Light", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(appliances.data$stove ~ appliances.data$appliance_date_time, type="l", main="REDD: Stove", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(appliances.data$kitchen_1 ~ appliances.data$appliance_date_time, type="l", main="REDD: kitchen_1", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(appliances.data$kitchen_2 ~ appliances.data$appliance_date_time, type="l", main="REDD: kitchen_2", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(appliances.data$dishwasher ~ appliances.data$appliance_date_time, type="l", main="REDD: dishwasher", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(appliances.data$washer_dryer ~ appliances.data$appliance_date_time, type="l", main="REDD: Washer dryer", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(appliances.data$disposal ~ appliances.data$appliance_date_time, type="l", main="REDD: disposal", xlab="Date/Time",ylab="Real Power (Watts)") 
+
+
+
+
+####################### plotting for testing
+par(mar=c(2,4,2,2),mfrow=c(5,1))
+plot(appliances.data$refrigerator ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Refrigerator (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$microwave ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Microwave (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$light ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Light (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$stove ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Stove (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$kitchen_1 ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Kitchen 1 (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+
+par(mar=c(2,4,2,2),mfrow=c(5,1))
+plot(appliances.data$kitchen_2 ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Kitchen 2 (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$dishwasher ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Dishwasher (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$washer_dryer ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Washer dryer (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$disposal ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Disposal (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+#######################
+
+
+####################### plotting for testing
+
+plot(mains.data$main_1_power ~ mains.data$main_date_time, type="l", xlab="Date/Time",ylab="Real Power (Watts)", xaxt="n") 
+axis(1, at=seq(from=mains.data$main_date_time[1], by="day", length.out = length(mains.data$main_1_power)), labels=strftime(seq(from=mains.data$main_date_time[1], by="day", length.out = length(mains.data$main_1_power)), format="%d/%m"))
+
+
+plot(mains.data$main_2_power ~ mains.data$main_date_time, type="l", xlab="Date/Time",ylab="Real Power (Watts)", xaxt="n") 
+axis(1, at=seq(from=mains.data$main_date_time[1], by="day", length.out = length(mains.data$main_2_power)), labels=strftime(seq(from=mains.data$main_date_time[1], by="day", length.out = length(mains.data$main_2_power)), format="%d/%m"))
+
+#######################
+
+
+####################### plotting for testing
+par(mar=c(2,4,2,2),mfrow=c(8,1))
+plot(appliances.data$refrigerator ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Refrigerator (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$microwave ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Microwave (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$light ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Light (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$stove ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Stove (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$kitchen_1 ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Kitchen 1 (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$kitchen_2 ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Kitchen 2 (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$dishwasher ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Dishwasher (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+plot(appliances.data$disposal ~ appliances.data$appliance_date_time, type="l", xlab="",ylab="Disposal (Watts)", xaxt="n") 
+axis(1, at=seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), labels=strftime(seq(from=appliances.data$appliance_date_time[1], by="day", length.out = length(appliances.data$disposal)), format="%d/%m"))
+
+#######################
+
+# check for missing values in the data i.e. NA if there are any fill them up with forward filling/padding
+mains.data[!complete.cases(mains.data),] # list rows which have missing values.
+appliances.data[!complete.cases(appliances.data),]
+
+# we remove (use forward padding) any fluctuations and transients i.e. values that are not normal very high or very low...
+
+# lets now check which appliances contributed the most in electricity consumption within the home no. 2
+total_power_consumption <- sum(mains.data$main_1_power,mains.data$main_2_power)
+for(appliance in names(appliances.data)){
+  if(appliance=="appliance_date_time")
+    next
+  contribution <- (100*sum(appliances.data[,appliance]))/total_power_consumption 
+  cat(sprintf("%s contirbuted: %.2f in total electricity consumption.\n", appliance, contribution))
+}
+# removing created objects
+rm(appliance,total_power_consumption,contribution)
+
+# since we observed from above that washer dryer was never turned on so we 'll remove it from the appliances.data data frame.
+appliances.data <- subset(appliances.data, select = -washer_dryer)
+
+# Load assignment to mains: either by time or if the main load is lower than appliance's load then assign it to the other one, which has higher value
+summary(appliances.data)
+str(appliances.data)
+
+# data frame that will store load assignment information
+appliance_main_events <- data.frame(appliance=character(0),main=character(0))
+
+# we can convert data frames into time series objects so we can easily manipulate with events...
+# doing the appliance assignment to mains loads... in order to create a labelled dataset.
+load_assignment <- function() {
+  threshold <- 50
+  for(appliance in names(appliances.data)){
+    if(appliance=="appliance_date_time")
+      next
+    eventOccured <- FALSE
+    startNoted <- FALSE
+    eventCount <- 0
+    startTime <- 0
+    startPower <- 0
+    endPower <- 0
+    endTime <- 0
+    applaince_event_in_main_found <- FALSE
+    i <- 1
+    for(real_power in appliances.data[,appliance]){
+      if(real_power >= threshold){
+        eventOccured <- TRUE
+      } 
+      if(eventOccured & !startNoted){
+        startTime <- appliances.data[i,'appliance_date_time']
+        startPower <- real_power
+        startNoted <- TRUE
+      } 
+      if(real_power < threshold & eventOccured & startNoted){
+        endTime <- appliances.data[i-1,'appliance_date_time'] # why i-1? because we want the endtime to be the previous time when the appliance was on
+        endPower <- appliances.data[i-1,appliance] # it has to be previous value not current, because appliance has to be ON
+        
+        
+        # now we should start looking into mains for start and end time and the real_power accordingly...
+        main_event_interval <- subset(mains.data, strftime(mains.data$main_date_time) > startTime & strftime(mains.data$main_date_time) < endTime)
+        for(main in names(main_event_interval)){ # because we have more than one mains from where the smart meter reads usage
+          if(main=="main_date_time")
+            next
+          # now check here if main's power has the event captured i.e. close to startPower and endPower
+          if(length(main_event_interval$main_1_power)>1){ # this check will avoid error; if the dataframe is of length 0
+            if(main_event_interval[1,main] >= startPower & main_event_interval[length(main_event_interval$main_1_power),main] >= endPower){
+              # now do something here
+              cat(sprintf("%s belongs to %s... start power: %.2f and stop power: %.2f\n ", appliance, main,main_event_interval[1,main], main_event_interval[length(main_event_interval$main_1_power),main]))
+              applaince_event_in_main_found <- TRUE
+              appliance_main_events <<- rbind(appliance_main_events, data.frame(Appliance=appliance,Main=main)) # saving the load assignments
+              break
+            }
+          }
+        }
+        
+        # lets check how many events it took to find out machine main event. 
+        eventCount <- eventCount+1
+        eventOccured <- FALSE
+        startNoted <- FALSE
+        if(applaince_event_in_main_found){
+          break
+        }
+      }
+      i <- i+1
+    }
+    cat(sprintf("%s: %i events.\n", appliance, eventCount))
+  }
+}
+
+# call the function now
+load_assignment()
+
+# load assignement data frame
+appliance_main_events
+appliance_main_events$Main[appliance_main_events$Appliance=="light"]
+
+
+######################################## saving the workspace object now... ##################################
+# it will save time if need to be re-run the code all over again...
+save.image(file="redd_01.RData")
+# loading from .RData file
+load("redd_01.RData")
+##############################################################################################################  
+
+# converting these main..labelled objects into zoo objects in order to do fast computations
+mains.1.zoo <- zoo(main.1.labelled[,2],main.1.labelled[,1])
+head(mains.1.zoo)
+
+mains.2.zoo <- zoo(main.2.labelled[,2],main.2.labelled[,1])
+head(mains.2.zoo)
+head(time(mains.2.zoo))
+head(coredata(mains.2.zoo))
+
+# make a complete data frame i.e. by combining appliances with respect to their mains in one data frame
+appliance_main_events[which(appliance_main_events$Main=='main_2_power'),1] # first checking which appliances are allocated to each main
+# main_1_power: kitchen_1, stove, kitchen_2, dishwasher
+# main_2_power: light, microwave, refrigerator, disposal
+
+head(mains.1.zoo)
+head(appliances.data)
+
+# let's first build two zoo time series objects from appliances.data so we can merge them with mains
+main.1.appliances.zoo <- zoo(appliances.data[,c(2,4,6,8)], appliances.data[,1])
+main.2.appliances.zoo <- zoo(appliances.data[,c(3,5,7,9)], appliances.data[,1])
+head(main.1.appliances.zoo)
+head(main.2.appliances.zoo)
+
+# plotting zoo objects
+# we can also have different screens=c(1,2,3,4) or screens=names(main.1.appliances.zoo)
+plot(main.1.appliances.zoo, screens=1, main="REDD: Main.1.appliances.zoo", xlab="Date/Time", ylab="Real Power", ylim=range(coredata(main.1.appliances.zoo)), col=c(1,2,3,4))
+plot(main.2.appliances.zoo, screens=names(main.2.appliances.zoo), main="REDD: Main.2.appliances.zoo", xlab="Date/Time", ylab="Real Power", ylim=range(coredata(main.2.appliances.zoo)), col=c(1,2,3,4))
+
+# now merge appliances and mains with each other to create objects i.e. main.1.combined.zoo and main.2.combined.zoo
+main.1.combined.zoo <- merge(mains.1.zoo, main.1.appliances.zoo, all=FALSE)
+main.2.combined.zoo <- merge(mains.2.zoo, main.2.appliances.zoo, all=FALSE)
+head(main.1.combined.zoo)
+head(main.2.combined.zoo)
+colnames(main.1.combined.zoo) <- c("mains_power", "kitchen_1", "stove", "kitchen_2", "dishwasher")
+head(main.1.combined.zoo)
+colnames(main.2.combined.zoo) <- c("mains_power", "light", "microwave", "refrigerator", "disposal")
+head(main.2.combined.zoo)
+sort(names(main.2.combined.zoo))
+# plotting main.1.combined.zoo and main.2.combined.zoo zoo objects
+plot.zoo(main.1.combined.zoo) # this is the simplest way
+plot(main.1.combined.zoo, screens=names(main.1.combined.zoo), main="REDD: main.1.combined.zoo", xlab="Date/Time", ylab=sort(names(main.1.combined.zoo)), col=as.factor(names(main.1.combined.zoo)))
+plot(main.1.combined.zoo, screens=1, main="REDD: main.1.combined.zoo", xlab="Date/Time", ylab="Real Power", col=as.factor(names(main.1.combined.zoo)))
+plot(main.2.combined.zoo, screens=names(main.2.combined.zoo), main="REDD: main.2.combined.zoo", xlab="Date/Time", ylab=sort(names(main.2.combined.zoo)), col=as.factor(names(main.2.combined.zoo)))
+plot(main.2.combined.zoo, screens=1, main="REDD: main.2.combined.zoo", xlab="Date/Time", ylab="Real Power", col=as.factor(names(main.2.combined.zoo)))
+
+# now if we see in main.2.combined.zoo plot. We see refrigerator has some noise i.e sometimes starting at around 2000 watts.
+# We need to remove this noise with either forward padding or other replacement methods. 
+# here we set if the fridge consumption is above 600 replace it with forward padding.
+table(main.2.combined.zoo[,"refrigerator"])
+main.2.combined.zoo[main.2.combined.zoo[,"refrigerator"] > 500,"refrigerator"] <- NA # replacing anything more than 500 with NA's
+length(main.2.combined.zoo[is.na(main.2.combined.zoo[,"refrigerator"]), "refrigerator"]) # to check how many NA's been written
+main.2.combined.zoo[,"refrigerator"] <- na.locf(main.2.combined.zoo[,"refrigerator"]) # now padding NA's with most recent observations...
+length(main.2.combined.zoo[is.na(main.2.combined.zoo[,"refrigerator"]), "refrigerator"]) # to check if NA's replaced
+plot(main.2.combined.zoo) # will show if it looks good now
+
+# here we now need to find out different states of each appliance so that we can label the data accurately....
+head(appliances.data)
+# lets now find_appliance_states using clustering.
+find_appliance_states <- function(){
+  #  print(Sys.time()) # just for checking how much it will be taking to compute below
+  for(appliance in names(appliances.data)){
+    if(appliance=="appliance_date_time") # omit the first column
+      next
+    # here do the following
+    temp_data <- appliances.data[,appliance] # new vector for each appliance
+    kmeans_result <- kmeans(temp_data, 3) # 3 is the number of clusters (states in each appliance) to be found using k means
+    # once computed the clustering model now print the results for each appliance
+    cat(sprintf("%s has centroids: ", appliance))
+    cat(sprintf("%.2f, ", kmeans_result$centers))
+    cat(sprintf(" with sizes: "))
+    cat(sprintf("%i, ", kmeans_result$size))
+    cat(sprintf("\n"))
+    # save each clustering model for future usage ??
+  }
+  #  print(Sys.time()) # just for checking how much it has taken to compute above
+}
+
+find_appliance_states() # calling the function here
+
+########################### any state with a difference of more than 25 watts having more than 20 readings (1 minute) is considerable ##########################
+# results from above function are as follows
+# kitchen_1 has centroids: 0.30,  13.77,  774.98,  with sizes: 217120,  93661,  740, 
+# light has centroids: 95.40,  155.43,  9.52,  with sizes: 7306,  32359,  271856, 
+# stove has centroids: 438.18,  0.56,  403.76,  with sizes: 44,  310830,  647, 
+# microwave has centroids: 1879.43,  8.67,  1743.49,  with sizes: 799,  310370,  352, 
+# kitchen_2 has centroids: 1047.66,  1062.65,  1.20,  with sizes: 1273,  1467,  308781, 
+# refrigerator has centroids: 403.80,  6.32,  163.52,  with sizes: 4398,  173349,  133774, 
+# dishwasher has centroids: 0.11,  1198.56,  246.07,  with sizes: 307743,  1972,  1806, 
+# disposal has centroids: 0.06,  539.33,  370.11,  with sizes: 311500,  3,  18,
+
+# from above output we can ignore any groups which are less than 25 or have smaller differences.
+# light has two states with centroids: 95.40 and 155.43
+# refrigerator has two states with centroids: 403.80 and 163.52
+# dishwasher has two states with centroids: 1198.56 and 246.07
+
+###################################### lets now save redd_02.RData version  ##################################
+# save.image(file="redd_02.RData") # save redd_02.RData
+load("redd_02.RData") # load redd_02.RData
+##############################################################################################################  
+
+# Find out if there is any reading in both mains which is not a total of appliances associated with them
+# this will tell us if there is any noise in mains.
+# mains power should be little greater (base-line or small appliances e.g. chargers) than total of associated appliances power
+temp_diff <- main.1.combined.zoo[,1] - rowSums(main.1.combined.zoo[,2:5])
+length(temp_diff[temp_diff > 50])
+length(temp_diff[temp_diff < 0])
+# the above calculations are showing that there are many readings which can be considered as noise in main.1 this could be appliances which have no ground truth to compare against
+main.1.combined.zoo[,1] <- (rowSums(main.1.combined.zoo[,2:5]) + sample(15:20, 1))
+head(main.1.combined.zoo)
+# repeating above steps for main.2
+temp_diff <- main.2.combined.zoo[,1] - rowSums(main.2.combined.zoo[,2:5])
+length(temp_diff[temp_diff > 100])
+plot(temp_diff[temp_diff > 100])
+# adjusting main.2 power as we did in the above step for main.1
+main.2.combined.zoo[,1] <- (rowSums(main.2.combined.zoo[,2:5]) + sample(15:20, 1))
+head(main.2.combined.zoo)
+# Creating one combined all appliances and ONE main
+main.combined.zoo <- merge(main.1.combined.zoo, main.2.combined.zoo, all=FALSE)
+names(main.combined.zoo)
+colnames(main.combined.zoo) <- c("mains_power","kitchen_1", "stove", "kitchen_2", "dishwasher", "mains.2", "light", "microwave", "refrigerator", "disposal")
+head(main.combined.zoo)
+# adding both mains to combine and make one main
+main.combined.zoo[,1] <- main.combined.zoo[,1] + main.combined.zoo[,6]
+head(main.combined.zoo)
+# removing 2nd main: mains.2
+main.combined.zoo <- main.combined.zoo[,setdiff(colnames(main.combined.zoo),c("mains.2"))]
+head(main.combined.zoo)
+
+# ploting main.combined.zoo
+plot(main.combined.zoo, screens=names(main.combined.zoo), main="REDD: main.combined.zoo", xlab="Date/Time", ylab=sort(names(main.combined.zoo)), col=as.factor(names(main.combined.zoo)))
+plot(main.combined.zoo, screens=1, main="REDD: main.combined.zoo", xlab="Date/Time", ylab="Real Power", col=as.factor(names(main.combined.zoo)))
+# ploting first day
+plot(main.combined.zoo[which(index(main.combined.zoo) > as.POSIXct("2011-04-18 07:00:00") & index(main.combined.zoo) < as.POSIXct("2011-04-19 07:00:00"))], col=as.factor(names(main.combined.zoo)))
+
+
+####################### plotting for testing
+plot(main.combined.zoo, screens=names(main.combined.zoo), main="REDD: main.combined.zoo", xlab="Date/Time", ylab=sort(names(main.combined.zoo)), col=as.factor(names(main.combined.zoo)))
+plot(main.combined.zoo[,1], main="REDD: main.zoo", xlab="Date/Time", ylab="Real Power", ylim=range(coredata(main.combined.zoo)), col=c(1:length(colnames(main.combined.zoo))))
+####################### 
+
+
+###################################### save redd_03.RData version  ##################################
+# save.image(file="redd_03.RData") # save redd_03.RData
+load("redd_03.RData") # load redd_03.RData
+##############################################################################################################  
+
+# now we should build labelled data sets main.1, main.2, and main.combined datasets
+# first convert zoo into data.frame so that the whole data set can be reshaped easily
+# we do main.1.combined.zoo first
+combined_temp <- main.1.combined.zoo
+head(combined_temp)
+head(combined_temp[,2:5])
+combined_temp[,1] <- (combined_temp[,1] - rowSums(combined_temp[,2:5]))
+head(combined_temp)
+colnames(combined_temp) <- c("base_line","kitchen_1", "stove", "kitchen_2", "dishwasher")
+head(combined_temp)
+
+temp_data_frame <- as.data.frame(combined_temp)
+colnames(temp_data_frame)
+rownames(temp_data_frame)
+head(temp_data_frame)
+head(index(combined_temp))
+temp_data_frame$date_time <- index(combined_temp)
+colnames(temp_data_frame)
+rownames(temp_data_frame)
+rownames(temp_data_frame) <- NULL # in order to re-define indexes
+head(temp_data_frame)
+house.2.main.1.labelled <- melt(temp_data_frame, id=c("date_time"))
+head(house.2.main.1.labelled)
+colnames(house.2.main.1.labelled) <- c("date_time","appliance","real_power")
+head(house.2.main.1.labelled)
+house.2.main.1.labelled <- house.2.main.1.labelled[order(house.2.main.1.labelled$date_time),] # ordering by date_time
+head(house.2.main.1.labelled)
+house.2.main.1.labelled <- subset(house.2.main.1.labelled, select=c(date_time, real_power, appliance)) # change column positions
+head(house.2.main.1.labelled)
+rownames(house.2.main.1.labelled) <- NULL # in order to re-define indexes
+head(house.2.main.1.labelled)
+
+# now do for main.2.combined.zoo
+combined_temp <- main.2.combined.zoo
+head(combined_temp)
+head(combined_temp[,2:5])
+combined_temp[,1] <- (combined_temp[,1] - rowSums(combined_temp[,2:5]))
+head(combined_temp)
+colnames(combined_temp) <- c("base_line", "light", "microwave", "refrigerator", "disposal")
+head(combined_temp)
+
+temp_data_frame <- as.data.frame(combined_temp)
+colnames(temp_data_frame)
+rownames(temp_data_frame)
+head(temp_data_frame)
+head(index(combined_temp))
+temp_data_frame$date_time <- index(combined_temp)
+colnames(temp_data_frame)
+rownames(temp_data_frame)
+rownames(temp_data_frame) <- NULL # in order to re-define indexes
+head(temp_data_frame)
+house.2.main.2.labelled <- melt(temp_data_frame, id=c("date_time"))
+head(house.2.main.2.labelled)
+colnames(house.2.main.2.labelled) <- c("date_time","appliance","real_power")
+head(house.2.main.2.labelled)
+house.2.main.2.labelled <- house.2.main.2.labelled[order(house.2.main.2.labelled$date_time),] # ordering by date_time
+head(house.2.main.2.labelled)
+house.2.main.2.labelled <- subset(house.2.main.2.labelled, select=c(date_time, real_power, appliance)) # change column positions
+head(house.2.main.2.labelled)
+rownames(house.2.main.2.labelled) <- NULL # in order to re-define indexes
+head(house.2.main.2.labelled)
+
+# make a full fledge labelled data set for house 2
+combined_temp <- main.combined.zoo
+head(combined_temp)
+head(combined_temp[,2:9])
+combined_temp[,1] <- (combined_temp[,1] - rowSums(combined_temp[,2:9]))
+head(combined_temp)
+colnames(combined_temp) <- c("base_line","kitchen_1", "stove", "kitchen_2", "dishwasher", "light", "microwave", "refrigerator", "disposal")
+head(combined_temp)
+
+temp_data_frame <- as.data.frame(combined_temp)
+colnames(temp_data_frame)
+rownames(temp_data_frame)
+head(temp_data_frame)
+head(index(combined_temp))
+temp_data_frame$date_time <- index(combined_temp)
+colnames(temp_data_frame)
+rownames(temp_data_frame)
+rownames(temp_data_frame) <- NULL # in order to re-define indexes
+head(temp_data_frame)
+house.2.labelled <- melt(temp_data_frame, id=c("date_time"))
+head(house.2.labelled)
+colnames(house.2.labelled) <- c("date_time","appliance","real_power")
+head(house.2.labelled)
+house.2.labelled <- house.2.labelled[order(house.2.labelled$date_time),] # ordering by date_time
+head(house.2.labelled)
+house.2.labelled <- subset(house.2.labelled, select=c(date_time, real_power, appliance)) # change column positions
+head(house.2.labelled)
+rownames(house.2.labelled) <- NULL # in order to re-define indexes
+head(house.2.labelled)
+
+# remove 0 watts consumption first
+house.2.main.1.labelled <- house.2.main.1.labelled[!(house.2.main.1.labelled$real_power == 0),]
+head(house.2.main.1.labelled)
+rownames(house.2.main.1.labelled) <- NULL # in order to re-define indexes
+head(house.2.main.1.labelled)
+# for house.2.main.2.labelled
+house.2.main.2.labelled <- house.2.main.2.labelled[!(house.2.main.2.labelled$real_power == 0),]
+head(house.2.main.2.labelled)
+rownames(house.2.main.2.labelled) <- NULL # in order to re-define indexes
+head(house.2.main.2.labelled)
+# for house.2.labelled
+house.2.labelled <- house.2.labelled[!(house.2.labelled$real_power == 0),]
+head(house.2.labelled)
+rownames(house.2.labelled) <- NULL # in order to re-define indexes
+head(house.2.labelled)
+
+# make a copy of data sets for appliance multi state
+house.2.main.1.multi.states.labelled <- house.2.main.1.labelled # this is labelled dataset for main.1
+house.2.main.2.multi.states.labelled <- house.2.main.2.labelled # this is labelled dataset for main.2
+house.2.multi.states.labelled <- house.2.labelled # this is full fledge labelled dataset for house 2
+
+# for dishwasher: changing dishwasher to dishwasher_low and dishwasher_high
+levels(house.2.main.1.multi.states.labelled$appliance) <- c(levels(house.2.main.1.multi.states.labelled$appliance),"dishwasher_low", "dishwasher_high")
+house.2.main.1.multi.states.labelled$appliance[(house.2.main.1.multi.states.labelled$real_power <= 400) & house.2.main.1.multi.states.labelled$appliance == "dishwasher"] <- gsub("dishwasher","dishwasher_low", house.2.main.1.multi.states.labelled$appliance[(house.2.main.1.multi.states.labelled$real_power <= 400) & house.2.main.1.multi.states.labelled$appliance == "dishwasher"])
+house.2.main.1.multi.states.labelled$appliance[(house.2.main.1.multi.states.labelled$real_power > 400) & house.2.main.1.multi.states.labelled$appliance == "dishwasher"] <- gsub("dishwasher","dishwasher_high", house.2.main.1.multi.states.labelled$appliance[(house.2.main.1.multi.states.labelled$real_power > 400) & house.2.main.1.multi.states.labelled$appliance == "dishwasher"])
+# for light: light_low, light_high
+levels(house.2.main.2.multi.states.labelled$appliance) <- c(levels(house.2.main.2.multi.states.labelled$appliance),"light_low", "light_high")
+house.2.main.2.multi.states.labelled$appliance[(house.2.main.2.multi.states.labelled$real_power <= 100) & house.2.main.2.multi.states.labelled$appliance == "light"] <- gsub("light","light_low", house.2.main.2.multi.states.labelled$appliance[(house.2.main.2.multi.states.labelled$real_power <= 100) & house.2.main.2.multi.states.labelled$appliance == "light"])
+house.2.main.2.multi.states.labelled$appliance[(house.2.main.2.multi.states.labelled$real_power > 100) & house.2.main.2.multi.states.labelled$appliance == "light"] <- gsub("light","light_high", house.2.main.2.multi.states.labelled$appliance[(house.2.main.2.multi.states.labelled$real_power > 100) & house.2.main.2.multi.states.labelled$appliance == "light"])
+# for refrigerator: refrigerator_low, refrigerator_high
+levels(house.2.main.2.multi.states.labelled$appliance) <- c(levels(house.2.main.2.multi.states.labelled$appliance),"refrigerator_low", "refrigerator_high")
+house.2.main.2.multi.states.labelled$appliance[(house.2.main.2.multi.states.labelled$real_power <= 200) & house.2.main.2.multi.states.labelled$appliance == "refrigerator"] <- "refrigerator_low"
+house.2.main.2.multi.states.labelled$appliance[(house.2.main.2.multi.states.labelled$real_power > 200) & house.2.main.2.multi.states.labelled$appliance == "refrigerator"] <- "refrigerator_high"
+
+# changing all above in full dataset house.2.multi.states.labelled
+levels(house.2.multi.states.labelled$appliance) <- c(levels(house.2.multi.states.labelled$appliance),"refrigerator_low", "refrigerator_high")
+house.2.multi.states.labelled$appliance[(house.2.multi.states.labelled$real_power <= 200) & house.2.multi.states.labelled$appliance == "refrigerator"] <- "refrigerator_low"
+house.2.multi.states.labelled$appliance[(house.2.multi.states.labelled$real_power > 200) & house.2.multi.states.labelled$appliance == "refrigerator"] <- "refrigerator_high"
+
+levels(house.2.multi.states.labelled$appliance) <- c(levels(house.2.multi.states.labelled$appliance),"dishwasher_low", "dishwasher_high")
+house.2.multi.states.labelled$appliance[(house.2.multi.states.labelled$real_power <= 400) & house.2.multi.states.labelled$appliance == "dishwasher"] <- "dishwasher_low"
+house.2.multi.states.labelled$appliance[(house.2.multi.states.labelled$real_power > 400) & house.2.multi.states.labelled$appliance == "dishwasher"] <- "dishwasher_high"
+
+levels(house.2.multi.states.labelled$appliance) <- c(levels(house.2.multi.states.labelled$appliance),"light_low", "light_high")
+house.2.multi.states.labelled$appliance[(house.2.multi.states.labelled$real_power <= 100) & house.2.multi.states.labelled$appliance == "light"] <- "light_low"
+house.2.multi.states.labelled$appliance[(house.2.multi.states.labelled$real_power > 100) & house.2.multi.states.labelled$appliance == "light"] <- "light_high"
+
+# remove the rest of the environment variables and save the final redd_04 version
+rm(load_assignment,find_appliance_states,temp_dates,house.2.main.1.events.labelled,house.2.main.2.events.labelled,house.2.events.labelled, house.2.main.1.events.labelled, house.2.events.labelled,labels.data, appliance_main_events,temp_data,temp_data_frame,combined_temp, all.labelled,main.1.labelled, main.2.labelled,main.1.appliances.zoo,main.2.appliances.zoo,main.combined.states.zoo, appliances.data,mains.data)
+
+# main 1
+main.1.real.power <- as.data.frame(main.1.combined.zoo[,1])
+head(main.1.real.power)
+main.1.real.power$date_time <- index(main.1.combined.zoo)
+head(main.1.real.power)
+colnames(main.1.real.power) <- c("real_power","date_time")
+rownames(main.1.real.power) <- NULL
+head(main.1.real.power)
+main.1.real.power <- subset(main.1.real.power, select=c(date_time, real_power)) # change column positions
+head(main.1.real.power)
+
+# main 2
+main.2.real.power <- as.data.frame(main.2.combined.zoo[,1])
+head(main.2.real.power)
+main.2.real.power$date_time <- index(main.2.combined.zoo)
+head(main.2.real.power)
+colnames(main.2.real.power) <- c("real_power","date_time")
+rownames(main.2.real.power) <- NULL
+head(main.2.real.power)
+main.2.real.power <- subset(main.2.real.power, select=c(date_time, real_power)) # change column positions
+head(main.2.real.power)
+
+# house 2 full 
+main.all.real.power <- as.data.frame(main.combined.zoo[,1])
+head(main.all.real.power)
+main.all.real.power$date_time <- index(main.combined.zoo)
+head(main.all.real.power)
+colnames(main.all.real.power) <- c("real_power","date_time")
+rownames(main.all.real.power) <- NULL
+head(main.all.real.power)
+main.all.real.power <- subset(main.all.real.power, select=c(date_time, real_power)) # change column positions
+head(main.all.real.power)
+
+# final data sets we will want to keep are
+head(mains.1.zoo) # this is every second readings of main.1
+head(mains.2.zoo) # this is every second readings of main.2
+head(main.1.combined.zoo) # this is collaborated data of appliances and main.1
+head(main.2.combined.zoo) # this is collaborated data of appliances and main.2
+head(main.combined.zoo) # this is all appliances plus mains collaborated data
+head(house.2.main.1.labelled) # this is labelled dataset for main.1
+head(house.2.main.2.labelled) # this is labelled dataset for main.2
+head(house.2.labelled) # this is full fledge labelled dataset for house 2
+head(house.2.main.1.multi.states.labelled)# this is labelled dataset with appliance states for main.1
+head(house.2.main.2.multi.states.labelled)# this is labelled dataset with appliance states for main.2
+head(house.2.multi.states.labelled)# this is full fledge labelled dataset with appliance states for house 2
+head(main.1.real.power) # real power for main.1
+head(main.2.real.power) # real power for main.2
+head(main.all.real.power) # real power for whole house
+
+# final testing with plotting
+plot(house.2.labelled$real_power, type="l", col=house.2.labelled$appliance, main="REDD: Energy Load Pattern", xlab="Date/Time",ylab="Real Power (Watts)") 
+plot(house.2.multi.states.labelled$real_power, type="l", pch=19, col=factor(house.2.multi.states.labelled$appliance), main="REDD: Energy Load Pattern", xlab="Date/Time",ylab="Real Power (Watts)",cex.axis=1.4,cex.lab=1.5) 
+
+# using ggplot2 much more powerful and elegant
+qplot(date_time, real_power, data=house.2.labelled[strftime(house.2.labelled$date_time) >= "2011-04-18 07:00:00" & strftime(house.2.labelled$date_time) <= "2011-04-19 23:59:59",], color = appliance)
+
+ggplot(data=house.2.labelled, aes(x=date_time, y=real_power, color = factor(appliance), group=appliance)) + geom_line(alpha = 0.5) + xlab("Date/Time") + ylab("Real Power (Watts)")
+ggplot(house.2.multi.states.labelled, aes(date_time, real_power, color = factor(appliance), group=appliance)) + geom_line() + xlab("Date/Time") + ylab("Real Power (Watts)")
+
+# experimenting with ggplot2 package http://ggplot2.org
+qplot(date_time, real_power, data=house.2.labelled, color = appliance, geom=c("point", "smooth"))
+qplot(real_power, data=house.2.labelled, fill=appliance) # histrogram with single variable
+
+qplot(date_time, real_power, data=house.2.labelled, color = appliance, facets=.~appliance) # facets for categorical variables i.e. appliances
+qplot(date_time, real_power, data=house.2.labelled, color = appliance, facets=appliance~.) # facets for categorical variables i.e. appliances
+qplot(real_power, data=house.2.labelled, fill=appliance, facets=appliance~.,binwidth=2) # facets: histrogram with single variable
+
+qplot(date_time, log(real_power), data=house.2.labelled, color = appliance) # lets take a log of real_power and then plot 
+
+# plotting more advanced ggplot function for the first two days of house.2.labelled
+g <- ggplot(data=house.2.labelled[strftime(house.2.labelled$date_time) >= "2011-04-18 07:00:00" & strftime(house.2.labelled$date_time) <= "2011-04-19 23:59:59",], aes(date_time, real_power))
+summary(g) # graph summary
+g + geom_line()
+g # print the graph now
+
+g + geom_smooth()
+g + geom_smooth(method="lm")
+
+g + facet_grid(.~appliance)
+
+g + geom_line(aes(color=appliance)) # coloring with repect to appliance
+
+g + geom_line(aes(color=appliance)) + theme_classic(base_family="Monaco", base_size=15) # black & white theme and change the text size & family
+
+g + geom_line(aes(color=appliance)) + coord_cartesian(ylim=c(0,300)) # plotting values between this range in order to exclude outliers
+
+# R graphics cook book best source. and ggplot website
+
+###################################### save redd_04.RData version  ##################################
+save.image(file="redd_04.RData") # save redd_04.RData
+# load("redd_04.RData") # load redd_04.RData
+##############################################################################################################  
+
+###################################### the step change detection  ##################################
+
+head(main.1.real.power) # real power for main.1
+head(main.2.real.power) # real power for main.2
+head(main.all.real.power) # real power for whole house
+
+# supervised ground truth here
+head(main.combined.zoo) # this is all appliances plus mains collaborated data
+main.combined.zoo.steps <- main.combined.zoo # re construct the object
+main.combined.zoo.steps <- merge(main.combined.zoo, 'ground.step'=0)
+head(main.combined.zoo.steps)
+ground.step <- "ground.step"
+
+for(appliance in names(main.combined.zoo.steps)){
+  if(appliance=="mains_power" | appliance=="w.step" | appliance=="t.step" | appliance=="ground.step"| appliance=="m.step" | appliance=="gof.step" | appliance=="glr.step")
+    next
+  find.ground.truth.simple.step.changes(coredata(main.combined.zoo.steps[,appliance]), 20, 10, 15, ground.step)
+}
+
+# check how many steps in total are considered as ground truth.
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"ground.step"])==1, "mains_power"])
+
+save(main.combined.zoo.steps, file="ground.truth.window-size-10-mean-difference.simple.labelleling.total.found.1340.Rda")
+load("ground.truth.window-size-10-mean-difference.supervised.labelleling.total.found.1339.Rda")
+
+head(main.combined.zoo.steps)
+
+# lets now create a step change labelled data set for house 2
+# we will provide algorithm each appliance seperately and then label one step column with 1s (for ON event) and Os (for OFF event)
+main.combined.zoo.steps <- main.combined.zoo # re construct the object
+main.combined.zoo.steps <- merge(main.combined.zoo, 'w.step'=0)
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 't.step'=0)
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'm.step'=0)
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'gof.step'=0)
+
+head(main.combined.zoo.steps)
+
+w.step <- "w.step"
+t.step <- "t.step"
+m.step <- "m.step"
+gof.step <- "gof.step"
+glr.step <- "glr.step"
+for(appliance in names(main.combined.zoo.steps)){
+  if(appliance=="mains_power" | appliance=="w.step" | appliance=="t.step" | appliance=="m.step" | appliance=="gof.step" | appliance=="glr.step")
+    next
+  w.results <- find.step.changes.wilcoxon.test(coredata(main.combined.zoo.steps[,appliance]), 20, 10, 15, w.step) # data, base_line, window_size, critical value
+  t.results <- find.step.changes.t.test(coredata(main.combined.zoo.steps[,appliance]), 20, 10, 4.6, t.step) # data, window_size, tValue=sensitivity level
+  m.results <- find.step.changes.mean.test(coredata(main.combined.zoo.steps[,appliance]), 20, 10, m.step)
+  gof.results <- find.step.changes.gof.test(coredata(main.combined.zoo.steps[,appliance]), 20, 10, 13.28, gof.step)
+  cat(sprintf("%s:\t W detected: %i, T detected: %i, M detected: %i, GOF detected: %i\n", appliance, w.results, t.results, m.results, gof.results))
+}
+
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"t.step"])==1, "mains_power"])
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"w.step"])==1, "mains_power"])
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"m.step"])==1, "mains_power"])
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"gof.step"])==1, "mains_power"])
+
+# check which event are common in all
+length(main.combined.zoo.steps[(coredata(main.combined.zoo.steps[,"w.step"])==1 & coredata(main.combined.zoo.steps[,"m.step"])==1) |
+                                 (coredata(main.combined.zoo.steps[,"w.step"])==1 & coredata(main.combined.zoo.steps[,"t.step"])==1) |
+                                 (coredata(main.combined.zoo.steps[,"w.step"])==1 & coredata(main.combined.zoo.steps[,"gof.step"])==1), "mains_power"])
+
+# create a new column named ground.step
+main.combined.zoo.steps <- main.combined.zoo.steps[,1:13]
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'ground.step'=0)
+
+# now anotate ground.step column with events
+main.combined.zoo.steps[(coredata(main.combined.zoo.steps[,"w.step"])==1 & coredata(main.combined.zoo.steps[,"m.step"])==1) |
+                          (coredata(main.combined.zoo.steps[,"w.step"])==1 & coredata(main.combined.zoo.steps[,"t.step"])==1) |
+                          (coredata(main.combined.zoo.steps[,"w.step"])==1 & coredata(main.combined.zoo.steps[,"gof.step"])==1), "ground.step"] <- 1
+
+
+
+save(main.combined.zoo.steps, file= "main.combined.zoo.window.size.10.true.steps.multiple.steps.Rda")
+load("main.combined.zoo.window.size.10.ground.truth.multiple.steps.Rda")
+load("main.combined.zoo.ground.truth.steps.Rda")
+
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"step"])==1, "step"])
+
+
+
+# now create another column for wilcoxon steps
+head(main.combined.zoo.steps)
+main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'WTstep'=0)
+head(main.combined.zoo.steps)
+
+# lets now find steps using Wilcoxon on the mains
+step <- "WTstep"
+find.step.changes.wilcoxon.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, 12, 21, step) # dataStream, baseLine, slidingWindowSize, lowerTail, step
+
+stepDetectorType <- "WTstep"
+evaluate.detected.step.changes(stepDetectorType)
+
+head(main.combined.zoo.steps[,])
+
+length(main.combined.zoo.steps[,])
+
+
+####################################################
+# conducting the wilcoxon test here for varying window sizes at various critical values
+step <- "WTstep"
+stepDetectorType <- "WTstep"
+ground.truth <- "ground.step" # or ground.step
+window.sizes <- c(10)
+w.test.results <- data.frame(c.value = numeric(), t.detected = numeric(), c.detected = numeric())
+count <- 1
+for(w.size in window.sizes){
+  c.value <- sum(1:(w.size/2))
+  boundary <- (c.value+10)
+  while(c.value < boundary){
+    main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+    main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'WTstep'=0)
+    t.detected <- find.step.changes.wilcoxon.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, w.size, c.value, step) # dataStream, baseLine, slidingWindowSize, lowerTail, step
+    c.detected <- evaluate.detected.step.changes(stepDetectorType,ground.truth)
+    w.test.results[count,] <- c(c.value,t.detected,c.detected)
+    cat(sprintf("w.size: %i, c.value: %i, t.detected: %i, c.detected: %i\n", w.size, c.value, t.detected, c.detected))
+    c.value <- c.value + 1
+    count <- count + 1
+  }
+}
+# lets now create a complete data frame with metrics
+w.test.results
+r.copy <- w.test.results
+true.steps <- length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"ground.step"])==1 ,"ground.step"]) # number of steps ground truth
+true.steps
+w.test.results <- cbind(w.test.results, precision=(w.test.results$c.detected/w.test.results$t.detected), recall=(w.test.results$c.detected/true.steps))
+w.test.results <- cbind(w.test.results, TPP=(w.test.results$c.detected/true.steps), FPP=(w.test.results$t.detected-w.test.results$c.detected)/true.steps)
+w.test.results <- cbind(w.test.results, F1.M=(2*(w.test.results$precision)*(w.test.results$recall)/(w.test.results$precision+w.test.results$recall)))
+w.test.results
+
+w.test.results$c.value <- c(0:9) # correcting c.values
+w.test.results$c.value
+save(w.test.results, file="experiment.window-size-10-w.test.results.against.total.1416.Rda")
+load("experiment.window-size-10-w.test.results.against.total.1416.Rda")
+w.test.results
+
+# testing
+t.detected <- find.step.changes.wilcoxon.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, 12, 21, step) # dataStream, baseLine, slidingWindowSize, lowerTail, step
+t.detected
+c.detected <- evaluate.detected.step.changes(stepDetectorType)
+
+
+
+head(main.combined.zoo.steps)
+
+####################################################
+# conducting the t test here for varying window sizes at various critical values
+step <- "Tstep"
+stepDetectorType <- "Tstep"
+ground.truth <- "ground.step"
+window.sizes <- c(10)
+t.test.results <- data.frame(t.value = numeric(), t.detected = numeric(), c.detected = numeric())
+count <- 1
+for(w.size in window.sizes){
+  t.value <- 1.0
+  boundary <- (t.value+12)
+  while(t.value < boundary){
+    main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+    main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'Tstep'=0)
+    t.detected <- find.step.changes.t.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, w.size, t.value, step) # data, window_size, tValue=sensitivity level
+    c.detected <- evaluate.detected.step.changes(stepDetectorType, ground.truth)
+    t.test.results[count,] <- c(t.value,t.detected,c.detected)
+    cat(sprintf("w.size: %i, t.value: %f, t.detected: %i, c.detected: %i\n", w.size, t.value, t.detected, c.detected))
+    t.value <- t.value + 1
+    count <- count + 1
+  }
+}
+# lets now create a complete data frame with metrics
+t.test.results 
+r.copy <- t.test.results
+true.steps <- length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"ground.step"])==1 ,"ground.step"]) # number of steps ground truth
+true.steps
+t.test.results <- cbind(t.test.results, precision=(t.test.results$c.detected/t.test.results$t.detected), recall=(t.test.results$c.detected/true.steps))
+t.test.results <- cbind(t.test.results, TPP=(t.test.results$c.detected/true.steps), FPP=(t.test.results$t.detected-t.test.results$c.detected)/true.steps)
+t.test.results <- cbind(t.test.results, F1.M=(2*(t.test.results$precision)*(t.test.results$recall)/(t.test.results$precision+t.test.results$recall)))
+t.test.results 
+
+t.test.results
+save(t.test.results, file="experiment.window-size-10-t.test.results.against.total.1416.Rda")
+load("experiment.window-size-10-t.test.results.against.total.1416.Rda")
+
+# testing
+t.detected <- find.step.changes.t.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, 10, 1, step) # data, window_size, tValue=sensitivity level
+t.detected
+c.detected <- evaluate.detected.step.changes(stepDetectorType)
+
+
+
+
+####################################################
+# conducting the mean test here for varying window sizes at various critical values
+step <- "Mstep"
+stepDetectorType <- "Mstep"
+ground.truth <- "ground.step"
+window.sizes <- c(10)
+m.test.results <- data.frame(m.value = numeric(), t.detected = numeric(), c.detected = numeric())
+count <- 1
+for(w.size in window.sizes){
+  m.value <- 20
+  boundary <- (m.value+20)
+  while(m.value < boundary){
+    main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+    main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'Mstep'=0)
+    t.detected <- find.step.changes.mean.test(coredata(main.combined.zoo.steps[,"mains_power"]), w.size, m.value, step) # data, window_size, tValue=sensitivity level
+    c.detected <- evaluate.detected.step.changes(stepDetectorType, ground.truth)
+    m.test.results[count,] <- c(m.value,t.detected,c.detected)
+    cat(sprintf("w.size: %i, m.value: %f, t.detected: %i, c.detected: %i\n", w.size, m.value, t.detected, c.detected))
+    m.value <- m.value + 2
+    count <- count + 1
+  }
+}
+# lets now create a complete data frame with metrics
+m.test.results
+r.copy <- m.test.results
+true.steps <- length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"ground.step"])==1 ,"ground.step"]) # number of steps ground truth
+true.steps
+m.test.results <- cbind(m.test.results, precision=(m.test.results$c.detected/m.test.results$t.detected), recall=(m.test.results$c.detected/true.steps))
+m.test.results <- cbind(m.test.results, TPP=(m.test.results$c.detected/true.steps), FPP=(m.test.results$t.detected-m.test.results$c.detected)/true.steps)
+m.test.results <- cbind(m.test.results, F1.M=(2*(m.test.results$precision)*(m.test.results$recall)/(m.test.results$precision+m.test.results$recall)))
+colnames(m.test.results) <- c("m.value","t.detected","c.detected","precision","recall","TPP","FPP","F1.M")
+m.test.results
+save(m.test.results, file="experiment.window-size-10-m.test.results.against.total.1416.Rda")
+load("experiment.window-size-10-m.test.results.against.total.1416.Rda")
+
+# testing
+m.results <- find.step.changes.mean.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, 10, m.step)
+
+
+####################################################
+# conducting the data difference based test here for varying window sizes at various critical values
+step <- "DDstep"
+stepDetectorType <- "DDstep"
+ground.truth <- "ground.step"
+window.sizes <- c(10)
+dd.test.results <- data.frame(m.value = numeric(), t.detected = numeric(), c.detected = numeric())
+count <- 1
+for(w.size in window.sizes){
+  m.value <- 20
+  boundary <- (m.value+20)
+  while(m.value < boundary){
+    main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+    main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'DDstep'=0)
+    t.detected <- find.step.changes.sample.data.difference.test(coredata(main.combined.zoo.steps[,"mains_power"]), w.size, m.value, step) # data, window_size, tValue=sensitivity level
+    c.detected <- evaluate.detected.step.changes(stepDetectorType, ground.truth)
+    dd.test.results[count,] <- c(m.value,t.detected,c.detected)
+    cat(sprintf("w.size: %i, m.value: %f, t.detected: %i, c.detected: %i\n", w.size, m.value, t.detected, c.detected))
+    m.value <- m.value + 2
+    count <- count + 1
+  }
+}
+# lets now create a complete data frame with metrics
+dd.test.results
+r.copy <- dd.test.results
+true.steps <- length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"ground.step"])==1 ,"ground.step"]) # number of steps ground truth
+true.steps
+dd.test.results <- cbind(dd.test.results, precision=(dd.test.results$c.detected/dd.test.results$t.detected), recall=(dd.test.results$c.detected/true.steps))
+dd.test.results <- cbind(dd.test.results, TPP=(dd.test.results$c.detected/true.steps), FPP=(dd.test.results$t.detected-dd.test.results$c.detected)/true.steps)
+dd.test.results <- cbind(dd.test.results, F1.M=(2*(dd.test.results$precision)*(dd.test.results$recall)/(dd.test.results$precision+dd.test.results$recall)))
+colnames(dd.test.results) <- c("m.value","t.detected","c.detected","precision","recall","TPP","FPP","F1.M")
+dd.test.results
+save(dd.test.results, file="experiment.window-size-10-dd.test.results.against.total.1416.Rda")
+load("experiment.window-size-10-dd.test.results.against.total.1416.Rda")
+
+# testing
+m.results <- find.step.changes.mean.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, 10, m.step)
+
+
+####################################################
+# conducting the glr test here for varying window sizes at various critical values
+
+step <- "GLRstep"
+stepDetectorType <- "GLRstep"
+ground.truth <- "ground.step"
+window.sizes <- c(20)
+glr.test.results <- data.frame(c.value = numeric(), t.detected = numeric(), c.detected = numeric())
+count <- 1
+for(w.size in window.sizes){
+  arl <- 10000
+  boundary <- (arl+60000)
+  while(arl < boundary){
+    
+    main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+    main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'GLRstep'=0)
+    # experimenting with some code from cpm package guide
+    cpm.results <- processStream(coredata(main.combined.zoo.steps[,"mains_power"]), cpmType = "ExponentialAdjusted", ARL0 = arl, startup = w.size)
+    # now updating the column of zoo object
+    main.combined.zoo.steps[cpm.results$changePoints, "GLRstep"] <- 1
+    t.detected <- length(cpm.results$changePoints)
+    c.detected <- evaluate.detected.step.changes(stepDetectorType, ground.truth)
+    glr.test.results[count,] <- c(arl,t.detected,c.detected)
+    cat(sprintf("w.size: %i, arl: %f, t.detected: %i, c.detected: %i\n", w.size, arl, t.detected, c.detected))
+    arl <<- arl + 10000 
+    count <- count + 1
+  }
+}
+glr.test.results
+true.steps <- length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"ground.step"])==1 ,"ground.step"]) # number of steps ground truth
+true.steps
+glr.test.results <- cbind(glr.test.results, precision=(glr.test.results$c.detected/glr.test.results$t.detected), recall=(glr.test.results$c.detected/true.steps))
+glr.test.results <- cbind(glr.test.results, TPP=(glr.test.results$c.detected/true.steps), FPP=(glr.test.results$t.detected-glr.test.results$c.detected)/true.steps)
+glr.test.results <- cbind(glr.test.results, F1.M=(2*(glr.test.results$precision)*(glr.test.results$recall)/(glr.test.results$precision+glr.test.results$recall)))
+glr.test.results
+save(glr.test.results, file="experiment.window-size-20-glr.test.results.against.total.1416.Rda")
+load("experiment.window-size-20-glr.test.results.against.total.1416.Rda")
+
+# testing
+main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'GLRstep'=0)
+head(main.combined.zoo.steps)
+cpm.results <- processStream(coredata(main.combined.zoo.steps[,"mains_power"]), cpmType = "Mann-Whitney", ARL0 = 3000, startup = 10)
+length(cpm.results$changePoints)
+stepDetectorType <- "GLRstep"
+evaluate.detected.step.changes(stepDetectorType)
+
+####################################################
+# conducting the gof test here for varying threshold values
+
+step <- "GOFstep"
+stepDetectorType <- "GOFstep"
+ground.truth <- "ground.step"
+window.sizes <- c(10)
+gof.test.results <- data.frame(m.value = numeric(), t.detected = numeric(), c.detected = numeric())
+count <- 1
+for(w.size in window.sizes){
+  g.value <- 5
+  boundary <- (g.value+50)
+  while(g.value < boundary){
+    main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+    main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'GOFstep'=0)
+    t.detected <- find.step.changes.gof.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, w.size, g.value, step) # dataStream, baseLine, slidingWindowSize, testThreshold, step
+    c.detected <- evaluate.detected.step.changes(stepDetectorType, ground.truth)
+    gof.test.results[count,] <- c(g.value,t.detected,c.detected)
+    cat(sprintf("w.size: %i, g.value: %f, t.detected: %i, c.detected: %i\n", w.size, g.value, t.detected, c.detected))
+    g.value <- g.value + 5
+    count <- count + 1
+  }
+}
+# lets now create a complete data frame with metrics
+gof.test.results
+n.copy <- gof.test.results
+true.steps <- length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"ground.step"])==1 ,"ground.step"]) # number of steps ground truth
+true.steps
+gof.test.results <- cbind(gof.test.results, precision=(gof.test.results$c.detected/gof.test.results$t.detected), recall=(gof.test.results$c.detected/true.steps))
+gof.test.results <- cbind(gof.test.results, TPP=(gof.test.results$c.detected/true.steps), FPP=(gof.test.results$t.detected-gof.test.results$c.detected)/true.steps)
+gof.test.results <- cbind(gof.test.results, F1.M=(2*(gof.test.results$precision)*(gof.test.results$recall)/(gof.test.results$precision+gof.test.results$recall)))
+colnames(gof.test.results) <- c("g.value","t.detected","c.detected","precision","recall","TPP","FPP","F1.M")
+gof.test.results 
+save(gof.test.results, file="experiment.window-size-10-gof.test.results.against.total.1416.Rda")
+load("experiment.window-size-10-gof.test.results.against.total.1416.Rda")
+
+
+# testing
+head(main.combined.zoo.steps)
+t.detected <- find.step.changes.gof.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, 10, 13.28, step) # data, window_size, tValue=sensitivity level
+t.detected
+
+
+
+max(w.test.results$precision)
+max(glr.test.results$precision)
+max(m.test.results$precision)
+max(gof.test.results$precision)
+
+metrics <- c("Precision", "Recall", "TPP", "FPP", "F-Measure")
+glr <- c(max(glr.test.results$precision), max(glr.test.results$recall), max(glr.test.results$TPP),max(glr.test.results$FPP), max(glr.test.results$F1.M))
+gof <- c(max(gof.test.results$precision), max(gof.test.results$recall), max(gof.test.results$TPP),max(gof.test.results$FPP), max(gof.test.results$F1.M))
+mean <- c(max(m.test.results$precision), max(m.test.results$recall), max(m.test.results$TPP),max(m.test.results$FPP), max(m.test.results$F1.M))
+ABLE <- c(max(w.test.results$precision), max(w.test.results$recall), max(w.test.results$TPP),max(w.test.results$FPP), max(w.test.results$F1.M))
+
+metrics <- c("Precision", "Recall", "F-Measure")
+glr <- c(max(glr.test.results$precision), max(glr.test.results$recall), max(glr.test.results$F1.M))
+gof <- c(max(gof.test.results$precision), max(gof.test.results$recall), max(gof.test.results$F1.M))
+mean <- c(max(m.test.results$precision), max(m.test.results$recall), max(m.test.results$F1.M))
+ABLE <- c(max(w.test.results$precision), max(w.test.results$recall), max(w.test.results$F1.M))
+
+
+Final.results <- data.frame(Metrics = metrics, GLR=glr, GOF = gof, MeanDiff = mean,  ABLE = ABLE)
+Final.results
+colnames(Final.results) <- c("Metrics", "Detector" ,"Score")
+Final.results <- melt(Final.results, id="Metrics")
+save(Final.results, file="experiment.window-size-10-all.max.results.against.total.1416.Rda")
+
+ggplot(data=Final.results, aes(x=Metrics, y=Score, fill=Detector)) +
+  geom_bar(width=.5, colour="black",position=position_dodge(), stat="identity") 
+
+ggplot(experiment.alpha.14, aes(alpha)) + 
+  geom_line(aes(y = recall, colour = "recall")) + geom_point(aes(y = recall, colour = "recall")) +
+  geom_line(aes(y = precision, colour = "precision")) + geom_point(aes(y = precision, colour = "precision"))
+
+# lets now find steps using GLR on the mains
+head(main.combined.zoo.steps[,1:10])
+main.combined.zoo.steps <- main.combined.zoo.steps[,1:10] # re construct the object
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'GLRstep'=0)
+head(main.combined.zoo.steps)
+
+# experimenting with some code from cpm package guide
+cpm.results <- processStream(coredata(main.combined.zoo.steps[,"mains_power"]), cpmType = "ExponentialAdjusted", ARL0 = 300, startup = 10)
+length(cpm.results$changePoints)
+cpm.results$changePoints
+# now updating the column of zoo object
+main.combined.zoo.steps[cpm.results$changePoints, "GLRstep"] <- 1
+
+stepDetectorType <- "GLRstep"
+evaluate.detected.step.changes(stepDetectorType)
+
+# lets see the mean based test now
+head(main.combined.zoo.steps[,1:12])
+main.combined.zoo.steps <- main.combined.zoo.steps[,1:12] # re construct the object
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'MEANstep'=0)
+head(main.combined.zoo.steps)
+step <- "MEANstep"
+find.step.changes.mean.test(coredata(main.combined.zoo.steps[,"mains_power"]), 12, 20, step) # data, window_size, tValue=sensitivity level
+
+# lets see the t test based test now
+head(main.combined.zoo.steps[,1:13])
+main.combined.zoo.steps <- main.combined.zoo.steps[,1:13] # re construct the object
+main.combined.zoo.steps <- merge(main.combined.zoo.steps, 'Tstep'=0)
+head(main.combined.zoo.steps)
+step <- "Tstep"
+d <- find.step.changes.t.test(coredata(main.combined.zoo.steps[,"mains_power"]), 20, 12, 3, step) # data, window_size, tValue=sensitivity level
+d
+
+# find out way to correctly see how many are good ones probably somewhere around that true step index
+
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"ground.step"])==1 ,"ground.step"]) # number of steps ground truth
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"WTstep"])==1 ,"WTstep"]) # number of steps detected using Wilcoxon
+length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,"GLRstep"])==1 ,"GLRstep"]) # number of steps detected using GLR
+
+length(main.combined.zoo.steps[(coredata(main.combined.zoo.steps[,"ground.step"])==1 & coredata(main.combined.zoo.steps[,"WTstep"]))==1, "ground.step"])
+length(main.combined.zoo.steps[(coredata(main.combined.zoo.steps[,"ground.step"])==1 & coredata(main.combined.zoo.steps[,"GLRstep"]))==1, "ground.step"])
+
+# lets write a function to evaluate detected step changes using various algorithms against the ground truth
+evaluate.detected.step.changes <- function(stepDetectorType, ground.truth){
+  
+  stepCount0 <- 0
+  stepCount1 <- 0
+  stepCount2 <- 0
+  stepCount3 <- 0
+  stepCount4 <- 0
+  stepCount5 <- 0
+  
+  true.steps <- length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,ground.truth])==1 ,ground.truth])
+  step.detected <- length(main.combined.zoo.steps[coredata(main.combined.zoo.steps[,stepDetectorType])==1 , stepDetectorType])
+  
+  if(true.steps > step.detected){
+    for(index in which(coredata(main.combined.zoo.steps[,stepDetectorType]) %in% 1)){ # lets loop through true event and then see around that index for a match
+      # detect any steps with 0 margine
+      if((coredata(main.combined.zoo.steps[index,ground.truth])==1)){ # plan   
+        stepCount0 <- stepCount0 + 1
+      }
+      # detect any steps with a margine of -1 n +1 
+      else if((coredata(main.combined.zoo.steps[(index-1),ground.truth])==1) | (coredata(main.combined.zoo.steps[(index+1),ground.truth])==1)){
+        stepCount1 <- stepCount1 + 1
+      }
+      # detect any steps with a margine of -2 n +2 
+      else if((coredata(main.combined.zoo.steps[(index-2),ground.truth])==1)| (coredata(main.combined.zoo.steps[(index+2),ground.truth])==1)){
+        stepCount2 <- stepCount2 + 1
+        stepCount2 <- 0 # not considering stepCount 2
+      }
+      # detect any steps with a margine of -3 n +3 
+      else if((coredata(main.combined.zoo.steps[(index-3),ground.truth])==1) | (coredata(main.combined.zoo.steps[(index+3),ground.truth])==1)){
+        stepCount3 <- stepCount3 + 1
+        stepCount3 <- 0 # not considering stepCount 3     
+      } 
+      # detect any steps with a margine of -4 n +4 
+      else if((coredata(main.combined.zoo.steps[(index-4),ground.truth])==1) | (coredata(main.combined.zoo.steps[(index+4),ground.truth])==1)){
+        stepCount4 <- stepCount4 + 1
+        stepCount4 <- 0 # not considering stepCount 4
+      } 
+      # detect any steps with a margine of -5 n +5 
+      else if((coredata(main.combined.zoo.steps[(index-5),ground.truth])==1) | (coredata(main.combined.zoo.steps[(index+5),ground.truth])==1)){
+        stepCount5 <- stepCount5 + 1
+        stepCount5 <- 0 # not considering stepCount 5
+        
+      } 
+    }
+  }
+  else{  
+    for(index in which(coredata(main.combined.zoo.steps[,ground.truth]) %in% 1)){ # lets loop through true event and then see around that index for a match
+      # detect any steps with 0 margine
+      if((coredata(main.combined.zoo.steps[index,stepDetectorType])==1)){ # plan   
+        stepCount0 <- stepCount0 + 1
+      }
+      # detect any steps with a margine of -1 n +1 
+      else if((coredata(main.combined.zoo.steps[(index-1),stepDetectorType])==1) | (coredata(main.combined.zoo.steps[(index+1),stepDetectorType])==1)){
+        stepCount1 <- stepCount1 + 1
+      }
+      # detect any steps with a margine of -2 n +2 
+      else if((coredata(main.combined.zoo.steps[(index-2),stepDetectorType])==1)| (coredata(main.combined.zoo.steps[(index+2),stepDetectorType])==1)){
+        stepCount2 <- stepCount2 + 1
+        stepCount2 <- 0 # not considering stepCount 2
+      }
+      # detect any steps with a margine of -3 n +3 
+      else if((coredata(main.combined.zoo.steps[(index-3),stepDetectorType])==1) | (coredata(main.combined.zoo.steps[(index+3),stepDetectorType])==1)){
+        stepCount3 <- stepCount3 + 1
+        stepCount3 <- 0 # not considering stepCount 3     
+      } 
+      # detect any steps with a margine of -4 n +4 
+      else if((coredata(main.combined.zoo.steps[(index-4),stepDetectorType])==1) | (coredata(main.combined.zoo.steps[(index+4),stepDetectorType])==1)){
+        stepCount4 <- stepCount4 + 1
+        stepCount4 <- 0 # not considering stepCount 4
+      } 
+      # detect any steps with a margine of -5 n +5 
+      else if((coredata(main.combined.zoo.steps[(index-5),stepDetectorType])==1) | (coredata(main.combined.zoo.steps[(index+5),stepDetectorType])==1)){
+        stepCount5 <- stepCount5 + 1
+        stepCount5 <- 0 # not considering stepCount 5
+        
+      } 
+    }
+  }
+  
+  cat(sprintf("Total steps detected: %i => \tstepCount0: %i \tstepCount1: %i \tstepCount2: %i \tstepCount3: %i \tstepCount4: %i \tstepCount5: %i\n", (stepCount0+stepCount1+stepCount2+stepCount3+stepCount4+stepCount5), stepCount0, stepCount1, stepCount2, stepCount3, stepCount4, stepCount5))
+  return ((stepCount0+stepCount1+stepCount2+stepCount3+stepCount4+stepCount5))
+}
+
+stepDetectorType <- "WTstep"
+evaluate.detected.step.changes(stepDetectorType)
+stepDetectorType <- "GLRstep"
+evaluate.detected.step.changes(stepDetectorType)
+stepDetectorType <- "MEANstep"
+evaluate.detected.step.changes(stepDetectorType)
+stepDetectorType <- "Tstep"
+evaluate.detected.step.changes(stepDetectorType)
+
+
+################################################### STEP CHANGE DECTION ALGORITHMS ###############################################
+
+#################### T TEST #####
+
+beginFound <- FALSE
+stepCount <- 0
+results <- vector('numeric')
+pause <- ""
+find.step.changes.t.test <- function(dataStream, baseLine, slidingWindowSize, tValue, step){
+  streamSize <- length(dataStream)
+  # reseting global variables
+  beginFound <<- FALSE
+  stepCount <<- 0
+  results <<- vector('numeric')
+  pause <<- ""
+  # process each stream to find out step changes
+  # plot(dataStream, type="l", main="Whole Building Energy Load Signal", xlab="Date/Time",ylab="Real Power (Watts)") 
+  i <- 1
+  while(i <= (streamSize-slidingWindowSize)){
+    slidingWindow <- dataStream[i:(i+slidingWindowSize-1)]
+    t.test.func(baseLine, slidingWindow, slidingWindowSize, tValue, i, step)
+    if(beginFound){
+      i <- i+ ((slidingWindowSize/2) -1)
+      # print(i)
+    }
+    i <- i+1
+  }
+  cat(sprintf("T-TEST: Total steps detected: %i\n", stepCount))
+  return(stepCount)
+}
+
+# t test function for sliding window stream
+t.test.func <- function(baseLine, slidingWindow, windowSize, tValue, ithIndex, step){
+  x <- slidingWindow[1:(windowSize/2)]
+  y <- slidingWindow[((windowSize/2)+1):windowSize]   
+  
+  # lets try from R's t.test
+  # print(t.test(y,x))
+  
+  # calculating means
+  mean1 <- mean(x)
+  mean2 <- mean(y)
+  # calculating sum of squared deviation from mean
+  sd1 <- sum((x - mean(x) )^2)
+  sd2 <- sum((y - mean(y) )^2)
+  # calculating variace and adding 1 in order to avoid NaN variance
+  var1 <- var(x) +1 
+  var2 <- var(y) +1
+  # calculating value of t
+  diff <- abs(mean1-mean2)
+  denom <- sqrt((var1+var2)/(windowSize/2))
+  t0 <- diff/denom
+  # now check if if step event is found then do the following
+  if(t0 >= tValue &  diff > baseLine){
+    stepCount <<- stepCount+1
+    results[stepCount] <<- (ithIndex+(windowSize/2))
+    beginFound <<- TRUE
+    if((mean2-mean1) > 0){
+      main.combined.zoo.steps[(ithIndex+(windowSize/2)), step] <<- 1 
+    }else{
+      main.combined.zoo.steps[(ithIndex+(windowSize/2) -1), step] <<- 1         
+    }
+  }
+  else{
+    beginFound <<- FALSE
+  }
+}
+
+
+#################### WILCOXON #####
+beginFound <- FALSE
+stepCount <- 0
+find.step.changes.wilcoxon.test <- function(dataStream, baseLine, slidingWindowSize, lowerTail, step){
+  streamSize <- length(dataStream)
+  # reseting global variables
+  beginFound <<- FALSE
+  stepCount <<- 0
+  # process each stream to find out step changes
+  i <- 1
+  while(i <= (streamSize-slidingWindowSize )){
+    slidingWindow <- dataStream[i:(i+slidingWindowSize-1)]
+    wilcoxon.test.func( baseLine, slidingWindow, slidingWindowSize, lowerTail, i, step)
+    if(beginFound){
+      i <- i+ ((slidingWindowSize/2) -1)
+    }
+    i <- i+1
+  }
+  cat(sprintf("WILCOXON: Total steps detected: %i\n", stepCount))
+  return(stepCount)
+}
+
+# t test function for sliding window stream
+wilcoxon.test.func <- function(baseLine, slidingWindow, windowSize, lowerTail, ithIndex, step){
+  x <- slidingWindow[1:(windowSize/2)]
+  y <- slidingWindow[((windowSize/2)+1):windowSize]   
+  
+  # combine both samples
+  xy <- c(x,y)
+  
+  # now compute ranks and rank sum for each sample
+  ranks <- rank(xy)
+  R1 <- sum(ranks[1:length(x)])
+  R2 <- sum(ranks[(length(x)+1):length(xy)])
+  
+  # variables for computing Zt?
+  n1 <- length(x)
+  n2 <- length(y)
+  N <- length(xy)
+  MinR <- min(R1, R2)
+  
+  # calculate the mean of both samples
+  mean1 <- mean(x)
+  mean2 <- mean(y)
+  diff <- abs(mean1-mean2)
+  
+  # now check if if step event is found then do the following R1 against lower and upper tail values for samples 5x5 its 19 and 36
+  if((MinR <= lowerTail) &  (prod(abs(x-y) >= baseLine))){
+    stepCount <<- stepCount+1
+    beginFound <<- TRUE    
+    if((mean2-mean1) > 0){
+      main.combined.zoo.steps[(ithIndex+(windowSize/2)), step] <<- 1      
+    }else{      
+      main.combined.zoo.steps[(ithIndex+(windowSize/2) -1), step] <<- 1      
+    }
+  }
+  else{
+    beginFound <<- FALSE
+  }
+}
+
+
+#################### MEAN BASED #####
+
+find.step.changes.mean.test <- function(dataStream, slidingWindowSize, threshold, step){
+  streamSize <- length(dataStream)
+  # reseting global variables
+  beginFound <- FALSE
+  stepCount <- 0
+  # process each stream to find out step changes
+  i <- 1
+  while(i <= (streamSize-slidingWindowSize)){
+    slidingWindow <- dataStream[i:(i+slidingWindowSize-1)]
+    x <- slidingWindow[1:(slidingWindowSize/2)]
+    y <- slidingWindow[((slidingWindowSize/2)+1):slidingWindowSize]    
+    # calculating means
+    mean1 <- mean(x)
+    mean2 <- mean(y)
+    diff <- abs(mean1-mean2)
+    if (diff >= threshold){
+      stepCount <- stepCount+1
+      if((mean2-mean1) > 0){
+        main.combined.zoo.steps[(i+(slidingWindowSize/2)), step] <<- 1      
+      }else{      
+        main.combined.zoo.steps[(i+(slidingWindowSize/2) -1), step] <<- 1      
+      }
+      i <- i+((slidingWindowSize/2) -1)
+    }
+    i <- i+1    
+  }
+  cat(sprintf("MEAN: Total steps detected: %i\n", stepCount))
+  return(stepCount)
+}
+
+#################### SAMPLE DATA DIFF - PRODUCT BASED #####
+
+find.step.changes.sample.data.difference.test <- function(dataStream, slidingWindowSize, threshold, step){
+  streamSize <- length(dataStream)
+  # reseting global variables
+  beginFound <- FALSE
+  stepCount <- 0
+  # process each stream to find out step changes
+  i <- 1
+  while(i <= (streamSize-slidingWindowSize)){
+    slidingWindow <- dataStream[i:(i+slidingWindowSize-1)]
+    x <- slidingWindow[1:(slidingWindowSize/2)]
+    y <- slidingWindow[((slidingWindowSize/2)+1):slidingWindowSize]    
+    # calculating means
+    mean1 <- mean(x)
+    mean2 <- mean(y)
+    diff <- abs(mean1-mean2)
+    if ((prod(abs(x-y) >= threshold))){
+      stepCount <- stepCount+1
+      if((mean2-mean1) > 0){
+        main.combined.zoo.steps[(i+(slidingWindowSize/2)), step] <<- 1      
+      }else{      
+        main.combined.zoo.steps[(i+(slidingWindowSize/2) -1), step] <<- 1      
+      }
+      i <- i+((slidingWindowSize/2) -1)
+    }
+    i <- i+1    
+  }
+  cat(sprintf("DATA DIFFERENCE: Total steps detected: %i\n", stepCount))
+  return(stepCount)
+}
+
+
+#################### GOF TEST #####
+find.step.changes.gof.test <- function(dataStream, baseLine, slidingWindowSize, testThreshold, step){
+  
+  streamSize <- length(dataStream)
+  # reseting global variables
+  beginFound <- FALSE
+  stepCount <- 0
+  # process each stream to find out step changes
+  i <- 1
+  while(i <= (streamSize-slidingWindowSize)){
+    slidingWindow <- dataStream[i:(i+slidingWindowSize-1)]
+    x <- slidingWindow[1:(slidingWindowSize/2)]
+    y <- slidingWindow[((slidingWindowSize/2)+1):slidingWindowSize]    
+    
+    # calculating means
+    mean1 <- mean(x)
+    mean2 <- mean(y)
+    diff <- abs(mean1-mean2)
+    
+    # calculating chi square gof here vector y is observed and vector x is expected frequency/values
+    n <- length(x)
+    total <- sum(x)
+    E <- (1/n)*total
+    STATISTIC <- sum((y - E)^2/E)
+    if(is.na(STATISTIC)){
+      STATISTIC <- 0
+    }
+    # &  (prod(abs(x-y) >= 20))
+    if((STATISTIC >= testThreshold) & diff > baseLine){
+      stepCount <- stepCount+1
+      
+      if((mean2-mean1) > 0){
+        main.combined.zoo.steps[(i+(slidingWindowSize/2)), step] <<- 1      
+      }else{      
+        main.combined.zoo.steps[(i+(slidingWindowSize/2) -1), step] <<- 1      
+      }
+      i <- i+((slidingWindowSize/2) -1)
+    }
+    else{
+      # do nothing if event is not found move to next reading
+    }
+    i <- i+1    
+  }
+  cat(sprintf("GOF: Total steps detected: %i\n", stepCount))
+  return(stepCount)  
+}
+
+###################################### ground truth labelling supervised (graph and pause) function #################################
+
+beginFound <- FALSE
+stepCount <- 0
+pause <- ""
+plot.size <- 0
+find.ground.truth.step.changes <- function(dataStream, baseLine, slidingWindowSize, lowerTail, step){
+  streamSize <- length(dataStream)
+  # reseting global variables
+  beginFound <<- FALSE
+  stepCount <<- 0
+  pause <<- ""
+  plot.size <<- 500
+  # process each stream to find out step changes
+  i <- 1
+  while(i <= (streamSize-(slidingWindowSize+5))){
+    if(i>=10){
+      if((i+500)<streamSize & i>=plot.size){
+        current.power.data <- dataStream[i:(i+500)]
+        plot(current.power.data, type="l")
+        plot.size <<- i+500
+      }
+    }
+    slidingWindow <- dataStream[i:(i+slidingWindowSize-1)]
+    ground.truth.test.func( baseLine, slidingWindow, slidingWindowSize, lowerTail, i, step)
+    if(beginFound){
+      i <- i+ ((slidingWindowSize/2) -1)
+    }
+    i <- i+1
+  }
+  cat(sprintf("GROUND TRUTH: Total steps detected: %i\n", stepCount))
+  return(stepCount)
+}
+
+# t test function for sliding window stream
+ground.truth.test.func <- function(baseLine, slidingWindow, windowSize, lowerTail, ithIndex, step){
+  x <- slidingWindow[1:(windowSize/2)]
+  y <- slidingWindow[((windowSize/2)+1):windowSize]   
+  
+  # combine both samples
+  xy <- c(x,y)
+  
+  # now compute ranks and rank sum for each sample
+  ranks <- rank(xy)
+  R1 <- sum(ranks[1:length(x)])
+  R2 <- sum(ranks[(length(x)+1):length(xy)])
+  
+  # variables for computing Zt?
+  n1 <- length(x)
+  n2 <- length(y)
+  N <- length(xy)
+  MinR <- min(R1, R2)
+  
+  # calculate the mean of both samples
+  mean1 <- mean(x)
+  mean2 <- mean(y)
+  diff <- abs(mean1-mean2)
+  
+  # now check if if step event is found then do the following R1 against lower and upper tail values for samples 5x5 its 19 and 36
+  if((MinR <= lowerTail) & (prod(abs(x-y) >= baseLine))){
+    cat(sprintf("MinR: %.2f : diff: %.2f\nSliding Window:", MinR, (mean2-mean1)))
+    cat(sprintf("%.2f,", slidingWindow))
+    abline(v = (((windowSize/2)+ithIndex-(plot.size-500))),lty=1, col="red") # draw a vertical line where change is detected
+    pause <<- readline(prompt = "Paused. Press <Enter> to pause at next event or type any character to continue...")
+    if(pause==""){
+      stepCount <<- stepCount+1
+      beginFound <<- TRUE    
+      if((mean2-mean1) > 0){
+        main.combined.zoo.steps[(ithIndex+(windowSize/2)), step] <<- 1      
+      }else{      
+        main.combined.zoo.steps[(ithIndex+(windowSize/2) -1), step] <<- 1      
+      }
+    }else{
+      # do nothing... no step
+    }
+  }
+  else{
+    beginFound <<- FALSE
+  }
+}
+
+
+###################################### ground truth labelling simple (non supervised) function #################################
+
+beginFound <- FALSE
+stepCount <- 0
+find.ground.truth.simple.step.changes <- function(dataStream, baseLine, slidingWindowSize, lowerTail, step){
+  streamSize <- length(dataStream)
+  # reseting global variables
+  beginFound <<- FALSE
+  stepCount <<- 0
+  # process each stream to find out step changes
+  i <- 1
+  while(i <= (streamSize-(slidingWindowSize+5))){
+    slidingWindow <- dataStream[i:(i+slidingWindowSize-1)]
+    ground.truth.simple.test.func( baseLine, slidingWindow, slidingWindowSize, lowerTail, i, step)
+    if(beginFound){
+      i <- i+ ((slidingWindowSize/2) -1)
+    }
+    i <- i+1
+  }
+  cat(sprintf("GROUND TRUTH: Total steps detected: %i\n", stepCount))
+  return(stepCount)
+}
+
+# t test function for sliding window stream
+ground.truth.simple.test.func <- function(baseLine, slidingWindow, windowSize, lowerTail, ithIndex, step){
+  x <- slidingWindow[1:(windowSize/2)]
+  y <- slidingWindow[((windowSize/2)+1):windowSize]   
+  
+  # combine both samples
+  xy <- c(x,y)
+  
+  # now compute ranks and rank sum for each sample
+  ranks <- rank(xy)
+  R1 <- sum(ranks[1:length(x)])
+  R2 <- sum(ranks[(length(x)+1):length(xy)])
+  
+  # variables for computing Zt?
+  n1 <- length(x)
+  n2 <- length(y)
+  N <- length(xy)
+  MinR <- min(R1, R2)
+  
+  # calculate the mean of both samples
+  mean1 <- mean(x)
+  mean2 <- mean(y)
+  diff <- abs(mean1-mean2)
+  
+  # now check if if step event is found then do the following R1 against lower and upper tail values for samples 5x5 its 19 and 36
+  if((MinR <= lowerTail) & (prod(abs(x-y) >= baseLine))){
+    stepCount <<- stepCount+1
+    beginFound <<- TRUE    
+    if((mean2-mean1) > 0){
+      main.combined.zoo.steps[(ithIndex+(windowSize/2)), step] <<- 1      
+    }else{      
+      main.combined.zoo.steps[(ithIndex+(windowSize/2) -1), step] <<- 1      
+    }
+  }
+  else{
+    beginFound <<- FALSE
+  }
+}
